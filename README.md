@@ -16,7 +16,7 @@ A server-rendered expense tracking app built with TypeScript, Express, EJS and P
 |---|---|
 | Language | TypeScript (strict mode) |
 | Server | Node.js, Express 5 |
-| Views | EJS, Bootstrap 5, a small custom stylesheet |
+| Views | EJS and a hand-written stylesheet (no CSS framework) |
 | Database | PostgreSQL via `pg` |
 | Auth | `express-session` with `connect-pg-simple` (sessions stored in Postgres), `bcrypt` |
 | Validation | Zod |
