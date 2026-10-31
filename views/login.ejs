@@ -1,0 +1,16 @@
+<%- include("partials/header.ejs") %>
+    <% if (error) { %>
+        <p class="error">
+            <%= error %>
+        </p>
+        <% } %>
+            <div>
+                <form action="/login" method="post">
+                    <label for="email">Email:</label>
+                    <input type="email" name="email" id="email" required autocomplete="email"
+                        value="<%=locals.email || "" %>">
+                    <label for="password">Password:</label>
+                    <input type="password" name="password" id="password" required autocomplete="current-password">
+                    <button type="submit">Log In</button>
+                </form>
+            </div>

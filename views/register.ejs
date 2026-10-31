@@ -1,0 +1,15 @@
+<%- include("partials/header.ejs") %>
+    <% if (error) { %>
+        <p class="error">
+            <%= error %>
+        </p>
+        <% } %>
+            <form action="/register" method="post">
+                <label for="name">Name:</label>
+                <input type="text" name="name" id="name" required value="<%=locals.name || "" %>">
+                <label for="email">Email:</label>
+                <input type="email" name="email" id="email" required value="<%=locals.email || "" %>">
+                <label for="password">Password:</label>
+                <input type="password" name="password" id="password" required>
+                <button type="submit">Sign Up</button>
+            </form>

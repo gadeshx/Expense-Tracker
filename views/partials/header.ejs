@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker</title>
+    <link rel="stylesheet" href="/style/main.css">
+</head>
+
+<body>
+    <main>
+        <header class="site-nav">
+            <div class="site-nav-inner">
+                <a href="/" class="site-brand">Expense Tracker</a>
+                <nav>
+                    <ul class="site-links">
+                        <li><a href="/">Home</a></li>
+                        <% if (!isLoggedIn) { %>
+                            <li><a href="/register">Sign Up</a></li>
+                            <li><a href="/login">Log In</a></li>
+                        <% } else { %>
+                            <li><a href="/expenses">My Expenses</a></li>
+                            <li><a href="/newexpense">Add Expense</a></li>
+                            <li><a href="/summary">Expenses Summary</a></li>
+                            <li>
+                                <form action="/logout" method="post">
+                                    <button type="submit">Log Out</button>
+                                </form>
+                            </li>
+                        <% } %>
+                    </ul>
+                </nav>
+            </div>
+        </header>

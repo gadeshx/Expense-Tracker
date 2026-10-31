@@ -1,0 +1,34 @@
+<%- include("partials/header.ejs") %>
+    <% if (error) { %>
+        <p class="error">
+            <%= error %>
+        </p>
+        <% } %>
+            <% if (expenses.length===0) { %>
+                <h2>No expenses yet, <a href="/newexpense">try adding a new one</a></h2>
+
+                <% } else { %>
+                    <ul>
+                        <%expenses.forEach((expense)=> { %>
+                            <li>
+                                <h3>
+                                    <%= expense.amount %>
+                                </h3>
+                                <p>
+                                    <%= expense.category %>
+                                </p>
+                                <p>
+                                    <%= expense.description %>
+                                </p>
+                                <p>
+                                    <%= expense.date %>
+                                </p>
+                                <a href="/expenses/edit/<%= expense.id %>">Edit</a>
+                                <form method="post" action="/expenses/delete/<%= expense.id %>"
+                                    onsubmit="return confirm('Delete this expense?')">
+                                    <button type="submit">Delete</button>
+                                </form>
+                            </li>
+                            <% }) %>
+                    </ul>
+                    <% } %>

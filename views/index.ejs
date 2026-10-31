@@ -1,0 +1,24 @@
+<%- include("partials/header.ejs") %>
+    <% if (error) { %>
+        <p class="error">
+            <%= error %>
+        </p>
+        <% } %>
+
+            <div class="home">
+                <% if (!isLoggedIn) { %>
+                    <h1>Fast, Easy, and Safe.</h1>
+                    <p class="home-subtitle">Track where your money goes now!</p>
+                    <div class="home-actions">
+                        <a href="/register" class="home-card home-card-primary">Sign Up</a>
+                        <a href="/login" class="home-card">Log In</a>
+                    </div>
+                    <% } else { %>
+                        <h1>Hello <%= userName %>, what do you want to do today?</h1>
+                        <div class="home-actions">
+                            <a href="/expenses" class="home-card">My Expenses</a>
+                            <a href="/newexpense" class="home-card">Add Expense</a>
+                            <a href="/summary" class="home-card">Expenses Summary</a>
+                        </div>
+                        <% } %>
+            </div>
