@@ -1,6 +1,6 @@
 # Expense Tracker
 
-A server-rendered expense tracking app built with TypeScript, Express, EJS and PostgreSQL. Users sign up, log in, record expenses by category, and see a monthly summary. It started as a project to practice TypeScript, so a lot of the design is about letting the type system, the validation layer and the database agree with each other.
+An expense tracking app built with TypeScript, Express and PostgreSQL. Users sign up, log in, record expenses by category, and see a monthly summary. The same app is available in two forms: server-rendered pages (EJS) and a JSON API under `/api`. It started as a project to practice TypeScript, so a lot of the design is about letting the type system, the validation layer and the database agree with each other.
 
 ## Features
 
@@ -9,6 +9,7 @@ A server-rendered expense tracking app built with TypeScript, Express, EJS and P
 - Every query is scoped to the logged-in user, so one user can never read, change or delete another user's data
 - Monthly summary: the total for a chosen month and a total per category
 - Server-side validation with Zod, backed by matching database constraints
+- A JSON API with the same features, consistent responses and correct HTTP status codes
 
 ## Tech stack
 
@@ -20,6 +21,7 @@ A server-rendered expense tracking app built with TypeScript, Express, EJS and P
 | Database | PostgreSQL via `pg` |
 | Auth | `express-session` with `connect-pg-simple` (sessions stored in Postgres), `bcrypt` |
 | Validation | Zod |
+| API testing | Postman |
 | Dev tooling | `tsx` (run and watch TypeScript directly) |
 
 ## Getting started
@@ -62,7 +64,7 @@ A server-rendered expense tracking app built with TypeScript, Express, EJS and P
    npm run dev
    ```
 
-   Then open http://localhost:3000.
+   Then open http://localhost:3000. The API is served from http://localhost:3000/api.
 
 ### Environment variables
 
@@ -85,10 +87,54 @@ A server-rendered expense tracking app built with TypeScript, Express, EJS and P
 
 You can also run `npx tsc --noEmit` at any time to type-check without producing files.
 
+## Pages (EJS version)
+
+| Route | Description |
+|---|---|
+| `GET /` | Home page |
+| `GET /register`, `POST /register` | Sign up |
+| `GET /login`, `POST /login` | Log in |
+| `POST /logout` | Log out |
+| `GET /expenses` | List your expenses |
+| `GET /expenses/new`, `POST /expenses/new` | Add an expense |
+| `GET /expenses/edit/:id`, `POST /expenses/edit/:id` | Edit an expense |
+| `POST /expenses/delete/:id` | Delete an expense |
+| `GET /summary?month=YYYY-MM` | Monthly summary (defaults to the current month) |
+
+## API
+
+All endpoints live under `/api` and use JSON. Authentication uses the same session cookie as the pages, so a client has to send cookies with its requests. Every response has one of two shapes:
+
+```json
+{ "ok": true, "data": { } }
+{ "ok": false, "error": "A message explaining what went wrong" }
+```
+
+| Method and path | Auth | Success | Errors |
+|---|---|---|---|
+| `POST /api/auth/register` | no | 201, the new user | 400 invalid input, 409 email already registered |
+| `POST /api/auth/login` | no | 200, the user | 400 invalid input, 401 wrong credentials |
+| `POST /api/auth/logout` | no | 200 | |
+| `GET /api/auth/me` | yes | 200, the current user | 401 |
+| `GET /api/expenses` | yes | 200, a list of expenses | 401 |
+| `POST /api/expenses` | yes | 201, the created expense | 400, 401 |
+| `GET /api/expenses/:id` | yes | 200, one expense | 400 bad id, 401, 404 |
+| `PUT /api/expenses/:id` | yes | 200, the updated expense | 400, 401, 404 |
+| `DELETE /api/expenses/:id` | yes | 204, no body | 400, 401, 404 |
+| `GET /api/summary?month=YYYY-MM` | yes | 200, month total and category totals | 400 bad month, 401 |
+
+Notes:
+
+- An expense that does not exist and an expense that belongs to another user both return 404, so the API never reveals which ids exist.
+- Unknown `/api` URLs return a JSON 404, and malformed JSON bodies return a JSON 400. Unexpected errors return a JSON 500 with a generic message, and the details are only logged on the server.
+- A request body is sent as JSON with the header `Content-Type: application/json`.
+
 ## Project structure
 
 ```
-index.ts          App setup, middleware and routes
+index.ts          App setup, middleware, the EJS routes and the final error handlers
+api.ts            The JSON API router (routes under /api) and the login guard for it
+helper.ts         Small shared helpers and constants (id parsing, session user id, messages)
 db.ts             PostgreSQL connection pool
 queries.ts        Typed database functions (the routes never call db.query directly)
 auth.ts           Password hashing and comparison (bcrypt)
@@ -108,6 +154,7 @@ public/style/     Stylesheet (main.css)
 - **Ownership is enforced in SQL.** Every read, update and delete includes `user_id` in its `WHERE` clause, and the user id always comes from the session, never from the request body or URL.
 - **Validation lives in two places on purpose.** Zod gives users clear messages, and the database constraints (`CHECK` on category and on `amount > 0`, `DATE` column) are the last line of defense.
 - **Untrusted values never reach SQL as text.** The sort order and month come from an allowlist or a strict format check, and every user value is a query parameter.
+- **The pages and the API share the same core.** Both use the same queries, validation and session setup, so a rule only has to be written once.
 
 ## Security notes
 
@@ -115,11 +162,12 @@ public/style/     Stylesheet (main.css)
 - Unknown email and wrong password produce the same message and status
 - The session id is regenerated on login and sign-up
 - Session cookies are `HttpOnly` and `SameSite=Lax`. Set `secure: true` when serving over HTTPS
-- Logout and delete are POST requests, never links
+- Logout and delete from the pages are POST requests, never links
 - Passwords are never sent back to a page, even after a failed submit
+- Ids from URLs are checked as plain positive integers before they reach the database
 
 ## Roadmap
 
-- JSON API version of the same routes, with consistent responses and an error-handling middleware
+- A React front end that uses the JSON API
 - Automated tests for the routes (including the "another user's data" cases)
 - Deployment
