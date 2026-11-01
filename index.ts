@@ -3,15 +3,18 @@ import express, { Request, Response, NextFunction } from "express";
 import db from "./db.js";
 import connectPgSimple from "connect-pg-simple";
 import session from "express-session";
-import bodyParser from "body-parser";
 import { compareHash, hashPassword } from "./auth.js";
 import { createExpense, createUser, findUserByEmail, getExpensesForUser, getExpenseById, updateExpense, deleteExpense, getCategoryTotals, getMonthTotal } from "./queries.js";
 import { NewUser, SignUp, Login, CATEGORY_OPTIONS, NewExpense, AddExpense, EditExpense } from "./types.js";
 import { validateExpense, validateLogin, validateSignup, monthSchema, firstMessage } from "./validation.js";
+import { apiRouter } from "./api.js";
+import { parseId, currentMonth, sessionUserId, EMAIL_TAKEN, INVALID_LOGIN } from "./helper.js";
 
 const app = express();
 const PgStore = connectPgSimple(session);
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static("public"));
 
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) {
@@ -30,15 +33,13 @@ app.use(session({
         maxAge: 1000 * 60 * 60 * 24 * 7,
     },
 }));
-
+app.use("/api", apiRouter);
 app.use((req, res, next) => {
     res.locals["isLoggedIn"] = req.session.userId !== undefined;
     res.locals["userName"] = req.session.name ?? "";
     res.locals["error"] = null;
     next();
 });
-
-app.use(express.static("public"));
 
 function requireLogin(req: Request, res: Response, next: NextFunction) {
     if (req.session.userId === undefined) {
@@ -48,13 +49,7 @@ function requireLogin(req: Request, res: Response, next: NextFunction) {
     return true;
 }
 
-function currentMonth(): string {
-    const now = new Date();
-    const year = String(now.getFullYear());
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    return `${year}-${month}`
-}
-
+//EJS version
 app.get("/", (req, res) => {
     res.render("index.ejs")
 });
@@ -67,7 +62,7 @@ app.get("/login", (req, res) => {
     res.render("login.ejs")
 });
 
-app.get("/newexpense", requireLogin, (req, res) => {
+app.get("/expenses/new", requireLogin, (req, res) => {
     const values = {
         amount: "",
         description: "",
@@ -79,10 +74,8 @@ app.get("/newexpense", requireLogin, (req, res) => {
 
 app.get("/expenses", requireLogin, async (req, res) => {
     try {
-        if (req.session.userId === undefined) {
-            return res.redirect("/login");
-        }
-        const result = await getExpensesForUser(req.session.userId);
+        const userId = sessionUserId(req)
+        const result = await getExpensesForUser(userId);
         res.render("expenses.ejs", { expenses: result });
     } catch (err) {
         console.log(err);
@@ -91,19 +84,16 @@ app.get("/expenses", requireLogin, async (req, res) => {
 });
 
 app.get("/expenses/edit/:id", requireLogin, async (req: Request<{ id: string }>, res: Response) => {
+    const expenseId = parseId(req.params.id);
     try {
-        if (req.session.userId === undefined) {
-            return res.redirect("/login");
+        const userId = sessionUserId(req)
+
+        if (expenseId === null) {
+            res.status(400).render("index.ejs", { error: "Invalid expense id" })
+            return;
         }
 
-        const expenseId = Number(req.params.id)
-        if (!Number.isInteger(expenseId) || expenseId <= 0) {
-            return res.status(400).render("index.ejs", {
-                error: "Please select an Expense to be edited"
-            });
-        }
-
-        const result = await getExpenseById(expenseId, req.session.userId)
+        const result = await getExpenseById(expenseId, userId)
         if (!result) {
             return res.status(404).render("index.ejs", {
                 error: "Expense not found, please try again"
@@ -131,9 +121,7 @@ app.get("/expenses/edit/:id", requireLogin, async (req: Request<{ id: string }>,
 
 app.get("/summary", requireLogin, async (req, res) => {
     try {
-        if (req.session.userId === undefined) {
-            return res.redirect("/login");
-        }
+        const userId = sessionUserId(req)
         const raw = req.query.month;
         let month: string;
 
@@ -150,8 +138,8 @@ app.get("/summary", requireLogin, async (req, res) => {
 
         const monthStart = `${month}-01`;
         const [categoryTotals, monthTotal] = await Promise.all([
-            getCategoryTotals(req.session.userId, monthStart),
-            getMonthTotal(req.session.userId, monthStart)
+            getCategoryTotals(userId, monthStart),
+            getMonthTotal(userId, monthStart)
         ])
         res.render("summary.ejs", {
             categoryTotals,
@@ -184,7 +172,7 @@ app.post("/register", async (req: Request<{}, {}, SignUp>, res, next) => {
         }
         if (await findUserByEmail(newUser.email)) {
             return res.status(409).render("register.ejs", {
-                error: "This email address is already registered.",
+                error: EMAIL_TAKEN,
                 name: name,
                 email: email,
             });
@@ -201,7 +189,7 @@ app.post("/register", async (req: Request<{}, {}, SignUp>, res, next) => {
     } catch (err) {
         if (err instanceof Error && "code" in err && err.code === "23505") {
             return res.status(409).render("register.ejs", {
-                error: "This email address is already registered.",
+                error: EMAIL_TAKEN,
                 name: name,
                 email: email,
             })
@@ -219,12 +207,6 @@ app.post("/login", async (req: Request<{}, {}, Login>, res, next) => {
     const body: Partial<Login> = req.body ?? {};
     const email = body.email?.trim() || "";
     try {
-        // if (!email || !password) {
-        //     return res.status(400).render("login.ejs", {
-        //         error: "Please fill out all the fields",
-        //         email: email
-        //     })
-        // }
         const validatedInfo = validateLogin(body);
         if (!validatedInfo.ok) {
             return res.status(400).render("login.ejs", { error: validatedInfo.error, email: email })
@@ -233,13 +215,13 @@ app.post("/login", async (req: Request<{}, {}, Login>, res, next) => {
         const result = await findUserByEmail(validatedInfo.data.email)
         if (!result) {
             return res.status(401).render("login.ejs", {
-                error: "The credentials you entered doesn't match, please try again",
+                error: INVALID_LOGIN,
                 email: email
             })
         }
         if (!await compareHash(validatedInfo.data.password, result.passwordHash)) {
             return res.status(401).render("login.ejs", {
-                error: "The credentials you entered doesn't match, please try again",
+                error: INVALID_LOGIN,
                 email: email
             })
         }
@@ -271,7 +253,7 @@ app.post("/logout", (req, res, next) => {
     });
 });
 
-app.post("/newexpense", requireLogin, async (req: Request<{}, {}, AddExpense>, res: Response) => {
+app.post("/expenses/new", requireLogin, async (req: Request<{}, {}, AddExpense>, res: Response) => {
     const body = req.body ?? {}
     const values = {
         amount: body.amount ?? "",
@@ -280,9 +262,7 @@ app.post("/newexpense", requireLogin, async (req: Request<{}, {}, AddExpense>, r
         date: body.date ?? "",
     };
     try {
-        if (req.session.userId === undefined) {
-            return res.redirect("/login");
-        }
+        const userId = sessionUserId(req)
 
         const result = validateExpense(body);
 
@@ -291,7 +271,7 @@ app.post("/newexpense", requireLogin, async (req: Request<{}, {}, AddExpense>, r
         }
 
         const expense: NewExpense = {
-            userId: req.session.userId,
+            userId: userId,
             amount: result.data.amount,
             category: result.data.category,
             description: result.data.description,
@@ -316,14 +296,11 @@ app.post("/expenses/edit/:id", requireLogin, async (req: Request<{ id: string },
         date: body.date ?? "",
         category: body.category ?? "",
     };
-    const expenseId = Number(req.params.id)
+    const expenseId = parseId(req.params.id);
     try {
-        if (req.session.userId === undefined) {
-            return res.redirect("/login");
-        }
-
-        if (!Number.isInteger(expenseId) || expenseId <= 0) {
-            return res.status(400).render("index.ejs", { error: "Please choose an Expense to edit" });
+        const userId = sessionUserId(req)
+        if (expenseId === null) {
+            return res.status(400).render("index.ejs", { error: "Invalid expense id" })
         }
         const result = validateExpense(values);
         if (!result.ok) {
@@ -334,7 +311,7 @@ app.post("/expenses/edit/:id", requireLogin, async (req: Request<{ id: string },
             category: result.data.category,
             description: result.data.description,
             date: result.data.date
-        }, expenseId, req.session.userId)
+        }, expenseId, userId)
 
         if (data === undefined) {
             return res.status(404).render("index.ejs", { error: "The Expense you are trying to edit is not found" });
@@ -350,15 +327,13 @@ app.post("/expenses/edit/:id", requireLogin, async (req: Request<{ id: string },
 });
 
 app.post("/expenses/delete/:id", requireLogin, async (req: Request<{ id: string }, {}, {}>, res: Response) => {
-    const expenseId = Number(req.params.id);
+    const expenseId = parseId(req.params.id);
     try {
-        if (req.session.userId === undefined) {
-            return res.redirect("/login");
+        const userId = sessionUserId(req)
+        if (expenseId === null) {
+            return res.status(400).render("index.ejs", { error: "Invalid expense id" })
         }
-        if (!Number.isInteger(expenseId) || expenseId <= 0) {
-            return res.status(400).render("index.ejs", { error: "Please choose an Expense to delete" });
-        }
-        const deleted = await deleteExpense(expenseId, req.session.userId)
+        const deleted = await deleteExpense(expenseId, userId)
         if (!deleted) {
             return res.status(404).render("index.ejs", { error: "The Expense you are trying to delete is not found" })
         }
@@ -368,6 +343,23 @@ app.post("/expenses/delete/:id", requireLogin, async (req: Request<{ id: string 
         console.log(err)
         res.status(500).render("index.ejs", { error: "Something went wrong, please try again." })
     }
+});
+
+app.use("/api", (req: Request, res: Response) => {
+    res.status(404).json({ ok: false, error: "Route not found" });
+});
+
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+        next(err);
+        return;
+    }
+    if (typeof err === "object" && err !== null && "type" in err && err.type === "entity.parse.failed") {
+        res.status(400).json({ ok: false, error: "Request body is not valid JSON" });
+        return;
+    }
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Something went wrong, please try again later" });
 });
 
 app.listen(3000, () => console.log("Listening on http://localhost:3000"));

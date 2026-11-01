@@ -19,16 +19,16 @@
                         <% if (!isLoggedIn) { %>
                             <li><a href="/register">Sign Up</a></li>
                             <li><a href="/login">Log In</a></li>
-                        <% } else { %>
-                            <li><a href="/expenses">My Expenses</a></li>
-                            <li><a href="/newexpense">Add Expense</a></li>
-                            <li><a href="/summary">Expenses Summary</a></li>
-                            <li>
-                                <form action="/logout" method="post">
-                                    <button type="submit">Log Out</button>
-                                </form>
-                            </li>
-                        <% } %>
+                            <% } else { %>
+                                <li><a href="/expenses">My Expenses</a></li>
+                                <li><a href="/expenses/new">Add Expense</a></li>
+                                <li><a href="/summary">Expenses Summary</a></li>
+                                <li>
+                                    <form action="/logout" method="post">
+                                        <button type="submit">Log Out</button>
+                                    </form>
+                                </li>
+                                <% } %>
                     </ul>
                 </nav>
             </div>
